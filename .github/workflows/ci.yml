@@ -40,8 +40,8 @@ jobs:
           C:\Windows\System32\OpenSSH\ssh.exe -i "%SSH_KEY%" -o StrictHostKeyChecking=no %REMOTE_DEST% "chmod +x /tmp/deploy.sh"
           
           echo [3/3] 正在远程执行任务...
-          :: 远程运行脚本
-          C:\Windows\System32\OpenSSH\ssh.exe -i "%SSH_KEY%" -o StrictHostKeyChecking=no %REMOTE_DEST% "bash /tmp/deploy.sh"
+          :: 远程先用 sed 清理 \r 再执行
+          C:\Windows\System32\OpenSSH\ssh.exe -i "%SSH_KEY%" -o StrictHostKeyChecking=no %REMOTE_DEST% "sed -i 's/\r//' /tmp/deploy.sh && bash /tmp/deploy.sh"
 
       - name: Cleanup (Optional)
         if: always()

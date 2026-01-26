@@ -7,6 +7,15 @@ jobs:
     runs-on: self-hosted # 确保这是你在跳板机上运行的 runner
     
     steps:
+      - name: Debug Environment
+        shell: cmd
+        run: |
+          echo "Checking Git location:"
+          where git
+          echo "Checking PATH:"
+          echo %PATH%
+        
+        
       - name: Checkout Code
         uses: actions/checkout@v4
         with:

@@ -42,7 +42,9 @@ class LatentPreparationStage(PipelineStage):
         """
         Prepare initial latent variables for the diffusion process.
 
-
+        Args:
+            batch: The current batch information.
+            server_args: The inference arguments.
 
         Returns:
             The batch with prepared latent variables.
@@ -60,6 +62,7 @@ class LatentPreparationStage(PipelineStage):
         device = get_local_torch_device()
         generator = batch.generator
         latents = batch.latents
+        
         num_frames = (
             latent_num_frames if latent_num_frames is not None else batch.num_frames
         )
@@ -85,15 +88,16 @@ class LatentPreparationStage(PipelineStage):
             latents = randn_tensor(
                 shape, generator=generator, device=device, dtype=dtype
             )
-
+            print(latents.shape ,num_frames,batch.height,batch.width)
             latent_ids = server_args.pipeline_config.maybe_prepare_latent_ids(latents)
 
             if latent_ids is not None:
                 batch.latent_ids = latent_ids.to(device=device)
-
+            print(latents.shape)
             latents = server_args.pipeline_config.maybe_pack_latents(
                 latents, batch_size, batch
             )
+            print(latents.shape,server_args.pipeline_config)
         else:
             latents = latents.to(device)
 
@@ -109,7 +113,9 @@ class LatentPreparationStage(PipelineStage):
         """
         Adjust video length based on VAE version.
 
-
+        Args:
+            batch: The current batch information.
+            server_args: The inference arguments.
 
         Returns:
             The batch with adjusted video length.

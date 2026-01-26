@@ -31,15 +31,11 @@ from sglang.multimodal_gen.runtime.layers.triton_ops import (
     fuse_scale_shift_kernel,
 )
 from sglang.multimodal_gen.runtime.models.dits.base import CachableDiT
-from sglang.multimodal_gen.runtime.platforms import (
-    AttentionBackendEnum,
-    current_platform,
-)
+from sglang.multimodal_gen.runtime.platforms import AttentionBackendEnum
 from sglang.multimodal_gen.runtime.utils.layerwise_offload import OffloadableDiTMixin
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
 
 logger = init_logger(__name__)  # pylint: disable=invalid-name
-_is_cuda = current_platform.is_cuda()
 
 
 def _get_qkv_projections(
@@ -120,7 +116,7 @@ class QwenEmbedRope(nn.Module):
         #     rope_theta=theta,
         #     use_real=False,
         #     repeat_interleave_real=False,
-        #     dtype=torch.float32 if current_platform.is_mps() or current_platform.is_musa() else torch.float64,
+        #     dtype=torch.float32 if current_platform.is_mps() else torch.float64,
         # )
 
         # DO NOT USING REGISTER BUFFER HERE, IT WILL CAUSE COMPLEX NUMBERS LOSE ITS IMAGINARY PART
@@ -545,7 +541,8 @@ class QwenImageCrossAttention(nn.Module):
         img_query, img_key, img_value, txt_query, txt_key, txt_value = (
             _get_qkv_projections(self, hidden_states, encoder_hidden_states)
         )
-
+        # print("img get的 q k v shape",img_query.shape,img_key.shape,img_value.shape)
+        # print("txt get的 q k v shape",txt_query.shape,txt_key.shape,txt_value.shape)
         # Reshape for multi-head attention
         img_query = img_query.unflatten(-1, (self.num_heads, -1))
         img_key = img_key.unflatten(-1, (self.num_heads, -1))
@@ -554,7 +551,8 @@ class QwenImageCrossAttention(nn.Module):
         txt_query = txt_query.unflatten(-1, (self.num_heads, -1))
         txt_key = txt_key.unflatten(-1, (self.num_heads, -1))
         txt_value = txt_value.unflatten(-1, (self.num_heads, -1))
-
+        # print("img after Reshape for multi-head attention的 q k v shape",img_query.shape,img_key.shape,img_value.shape)
+        # print("txt after Reshape for multi-head attention的 q k v shape",txt_query.shape,txt_key.shape,txt_value.shape)
         # Apply QK normalization
         if self.qk_norm:
             img_query, img_key = apply_qk_norm(
@@ -573,7 +571,8 @@ class QwenImageCrossAttention(nn.Module):
                 head_dim=txt_query.shape[-1],
                 allow_inplace=True,
             )
-
+        # print("img after norm的 q k v shape",img_query.shape,img_key.shape,img_value.shape)
+        # print("txt after norm的 q k v shape",txt_query.shape,txt_key.shape,txt_value.shape)
         # Apply RoPE
         if image_rotary_emb is not None:
             if not (
@@ -596,13 +595,15 @@ class QwenImageCrossAttention(nn.Module):
         joint_query = torch.cat([txt_query, img_query], dim=1)
         joint_key = torch.cat([txt_key, img_key], dim=1)
         joint_value = torch.cat([txt_value, img_value], dim=1)
-
+        # print(" after cat 后 joint的 q k v shape",joint_query.shape,joint_key.shape,joint_value.shape)
+        
         # Compute joint attention
         joint_hidden_states = self.attn(
             joint_query,
             joint_key,
             joint_value,
         )
+        # print(" after attention 后 joint的 q k v shape",joint_query.shape,joint_key.shape,joint_value.shape)
 
         # Reshape back
         joint_hidden_states = joint_hidden_states.flatten(2, 3)
@@ -618,7 +619,8 @@ class QwenImageCrossAttention(nn.Module):
             (img_attn_output,) = self.to_out[1](img_attn_output)  # dropout
 
         txt_attn_output, _ = self.to_add_out(txt_attn_output)
-
+        # print(" after attention 后 img的 q k v shape",img_attn_output.shape,img_attn_output.shape,img_attn_output.shape)
+        # print(" after attention 后 txt的 q k v shape",txt_attn_output.shape,txt_attn_output.shape,txt_attn_output.shape)
         return img_attn_output, txt_attn_output
 
 
@@ -688,7 +690,7 @@ class QwenImageTransformerBlock(nn.Module):
             )
             gate0, gate1 = gate[:actual_batch], gate[actual_batch : 2 * actual_batch]
 
-            if _is_cuda:
+            if x.is_cuda:
                 if not x.is_contiguous():
                     x = x.contiguous()
                 if not index.is_contiguous():
@@ -743,14 +745,17 @@ class QwenImageTransformerBlock(nn.Module):
         txt_mod1, txt_mod2 = txt_mod_params.chunk(2, dim=-1)  # Each [B, 3*dim]
 
         # Process image stream - norm1 + modulation
-
+        # print("before norm 1 hidden_states的shape",hidden_states.shape)
+        # print("before norm 1 encoder_hidden_states的shape",encoder_hidden_states.shape)
         img_normed = self.img_norm1(hidden_states)
-
+        # print("after norm 1 hidden_states的shape",img_normed.shape)
         img_modulated, img_gate1 = self._modulate(img_normed, img_mod1, modulate_index)
         # Process text stream - norm1 + modulation
         txt_normed = self.txt_norm1(encoder_hidden_states)
+        # print("after norm 1 encoder_hidden_states的shape",txt_normed.shape)
         txt_modulated, txt_gate1 = self._modulate(txt_normed, txt_mod1)
-
+        # print("after _modulate 1 hidden_states的shape",img_modulated.shape)
+        # print("after _modulate 1 encoder_hidden_states的shape",txt_modulated.shape)
         # Use QwenAttnProcessor2_0 for joint attention computation
         # This directly implements the DoubleStreamLayerMegatron logic:
         # 1. Computes QKV for both streams
@@ -776,16 +781,22 @@ class QwenImageTransformerBlock(nn.Module):
 
         # Process image stream - norm2 + MLP
         img_normed2 = self.img_norm2(hidden_states)
+        # print("after norm 2 cond hidden_states的shape",img_normed2.shape)
         img_modulated2, img_gate2 = self._modulate(
             img_normed2, img_mod2, modulate_index
         )
+        # print("after _modulate 2 cond hidden_states的shape",img_modulated2.shape)
         img_mlp_output = self.img_mlp(img_modulated2)
+        # print("after img_mlp 2 hidden_states的shape",img_mlp_output.shape)
         hidden_states = hidden_states + img_gate2 * img_mlp_output
 
         # Process text stream - norm2 + MLP
         txt_normed2 = self.txt_norm2(encoder_hidden_states)
+        # print("after norm 2 encoder_hidden_states的shape",txt_normed2.shape)
         txt_modulated2, txt_gate2 = self._modulate(txt_normed2, txt_mod2)
+        # print("after _modulate 2 encoder_hidden_states的shape",txt_modulated2.shape)
         txt_mlp_output = self.txt_mlp(txt_modulated2)
+        # print("after mlp 2 encoder_hidden_states的shape",txt_mlp_output.shape)
         encoder_hidden_states = encoder_hidden_states + txt_gate2 * txt_mlp_output
 
         # Clip to prevent overflow for fp16
@@ -946,9 +957,9 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
 
         if isinstance(encoder_hidden_states, list):
             encoder_hidden_states = encoder_hidden_states[0]
-
+        # print("before linear hidden_states.shape",hidden_states.shape)
         hidden_states = self.img_in(hidden_states)
-
+        # print("after linear hidden_states.shape",hidden_states.shape)
         timestep = (timestep / 1000).to(hidden_states.dtype)
 
         if self.zero_cond_t:
@@ -957,13 +968,15 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
             modulate_index = self.build_modulate_index(to_hashable(img_shapes), device)
         else:
             modulate_index = None
-
+        # print("before linear encoder_hidden_states.shape",encoder_hidden_states.shape)    
         encoder_hidden_states = self.txt_norm(encoder_hidden_states)
         encoder_hidden_states = self.txt_in(encoder_hidden_states)
-
+        # print("after linear encoder_hidden_states.shape",encoder_hidden_states.shape)
+        # print("encoder_hiddenstates",encoder_hidden_states)
         temb = self.time_text_embed(timestep, hidden_states, additional_t_cond)
 
         temb_img_silu = F.silu(temb)
+        # print("temb,temb_silu",temb,temb_img_silu)
         if self.zero_cond_t:
             temb_txt = temb.chunk(2, dim=0)[0]
             temb_txt_silu = temb_img_silu.chunk(2, dim=0)[0]
@@ -996,8 +1009,9 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
                 )
         # Use only the image part (hidden_states) from the dual-stream blocks
         hidden_states = self.norm_out(hidden_states, temb_txt)
-
+        
         output = self.proj_out(hidden_states)
+        # print("out_shape,proj_out_weight.shape",output.shape)
         return output
 
 

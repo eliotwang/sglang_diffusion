@@ -1,0 +1,41 @@
+name: Remote Linux CI
+
+on: [push]
+
+jobs:
+  build-and-test:
+    runs-on: self-hosted # 确保这是你在跳板机上运行的 runner
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Deploy and Execute
+        shell: cmd
+        run: |
+          @echo off
+          :: --- 配置区 ---
+          set "REMOTE_USER=amd"
+          set "REMOTE_HOST=banff-cyxtera-s80-2.ctr.dcgpu"
+          set "SSH_KEY=C:\Users\charyang\.ssh\id_mi80"
+          set "REMOTE_DEST=%REMOTE_USER%@%REMOTE_HOST%"
+          
+          echo [1/3] 正在上传执行脚本到远端...
+          :: 使用原生 scp 传输脚本
+          C:\Windows\System32\OpenSSH\scp.exe -i "%SSH_KEY%" -o StrictHostKeyChecking=no deploy.sh %REMOTE_DEST%:/tmp/deploy.sh
+          
+          echo [2/3] 正在设置脚本执行权限...
+          C:\Windows\System32\OpenSSH\ssh.exe -i "%SSH_KEY%" -o StrictHostKeyChecking=no %REMOTE_DEST% "chmod +x /tmp/deploy.sh"
+          
+          echo [3/3] 正在远程执行任务...
+          :: 远程运行脚本
+          C:\Windows\System32\OpenSSH\ssh.exe -i "%SSH_KEY%" -o StrictHostKeyChecking=no %REMOTE_DEST% "bash /tmp/deploy.sh"
+
+      - name: Cleanup (Optional)
+        if: always()
+        shell: cmd
+        run: |
+          :: 任务结束后的清理（可选）
+          set "SSH_KEY=C:\Users\charyang\.ssh\id_mi80"
+          set "REMOTE_DEST=amd@banff-cyxtera-s80-2.ctr.dcgpu"
+          C:\Windows\System32\OpenSSH\ssh.exe -i "%SSH_KEY%" %REMOTE_DEST% "rm /tmp/deploy.sh"

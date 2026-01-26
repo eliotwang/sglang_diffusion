@@ -61,7 +61,9 @@ class TimestepPreparationStage(PipelineStage):
         """
         Prepare timesteps for the diffusion process.
 
-
+        Args:
+            batch: The current batch information.
+            server_args: The inference arguments.
 
         Returns:
             The batch with prepared timesteps.
@@ -72,8 +74,9 @@ class TimestepPreparationStage(PipelineStage):
         timesteps = batch.timesteps
         sigmas = batch.sigmas
         n_tokens = batch.n_tokens
-
-        sigmas = server_args.pipeline_config.prepare_sigmas(sigmas, num_inference_steps)
+        print("timestepstimestepstimestepstimesteps",timesteps)
+        print(server_args.pipeline_config)
+        sigmas = server_args.pipeline_config.prepare_sigmas(sigmas, num_inference_steps)#向量 【1，（num_inference_steps-1）/num_inference_steps ....】
 
         # Prepare extra kwargs for set_timesteps
         extra_set_timesteps_kwargs = {}
@@ -116,14 +119,17 @@ class TimestepPreparationStage(PipelineStage):
                     f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
                     f" sigmas schedules. Please check whether you are using the correct scheduler."
                 )
+            print(scheduler)
             scheduler.set_timesteps(
                 sigmas=sigmas, device=device, **extra_set_timesteps_kwargs
             )
             timesteps = scheduler.timesteps
+            print("11111111111")
         else:
             scheduler.set_timesteps(
                 num_inference_steps, device=device, **extra_set_timesteps_kwargs
             )
+            print("22222222222")
             timesteps = scheduler.timesteps
 
         # Update batch with prepared timesteps

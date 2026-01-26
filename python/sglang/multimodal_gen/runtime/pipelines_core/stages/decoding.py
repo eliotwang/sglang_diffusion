@@ -129,6 +129,7 @@ class DecodingStage(PipelineStage):
         # scale and shift
         latents = self.scale_and_shift(latents, server_args)
         # Preprocess latents before decoding (e.g., unpatchify for standard Flux2 VAE)
+        # print(server_args.pipeline_config)
         latents = server_args.pipeline_config.preprocess_decoding(
             latents, server_args, vae=self.vae
         )
@@ -147,6 +148,8 @@ class DecodingStage(PipelineStage):
                 pass
             if not vae_autocast_enabled:
                 latents = latents.to(vae_dtype)
+            # print(self.vae)
+            # print("self.vae.decode(latents)")
             decode_output = self.vae.decode(latents)
             image = _ensure_tensor_decode_output(decode_output)
 
@@ -193,6 +196,21 @@ class DecodingStage(PipelineStage):
         representations to pixel-space video/images. It also optionally decodes
         trajectory latents for visualization purposes.
 
+        Args:
+            batch: The current batch containing:
+                - latents: Tensor to decode (batch, channels, frames, height_latents, width_latents)
+                - return_trajectory_decoded (optional): Flag to decode trajectory latents
+                - trajectory_latents (optional): Latents at different timesteps
+                - trajectory_timesteps (optional): Corresponding timesteps
+            server_args: Configuration containing:
+                - vae_cpu_offload: Whether to offload VAE to CPU after decoding
+                - model_loaded: Track VAE loading state
+                - model_paths: Path to VAE model if loading needed
+
+        Returns:
+            Modified batch with:
+                - output: Decoded frames (batch, channels, frames, height, width) as CPU float32
+                - trajectory_decoded (if requested): List of decoded frames per timestep
         """
         # load vae if not already loaded (used for memory constrained devices)
         self.load_model()
@@ -224,8 +242,6 @@ class DecodingStage(PipelineStage):
         else:
             trajectory_decoded = None
 
-        frames = server_args.pipeline_config.post_decoding(frames, server_args)
-
         # Update batch with decoded image
         output_batch = OutputBatch(
             output=frames,
@@ -234,7 +250,7 @@ class DecodingStage(PipelineStage):
             trajectory_decoded=trajectory_decoded,
             timings=batch.timings,
         )
-
+        print("frames.shape",frames.shape)
         self.offload_model()
 
         return output_batch

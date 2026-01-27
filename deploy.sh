@@ -8,7 +8,9 @@ GITHUB_REPO="https://github.com/eliotwang/sglang_diffusion.git"
 echo "正在清理并创建工作目录: $SGLANG_DIR"
 if [ -d "$SGLANG_DIR" ]; then
     echo "检测到残留文件，正在通过 Docker 权限强制清理..."
-    docker run --rm -v "$SGLANG_DIR:/mnt_cleanup" busybox sh -c "rm -rf /mnt_cleanup/* /mnt_cleanup/.[!.]*"
+    docker run --rm -v "$SGLANG_DIR:/mnt_cleanup" \
+        lmsysorg/sglang:v0.5.6.post2-rocm700-mi30x \
+        sh -c "rm -rf /mnt_cleanup/* /mnt_cleanup/.[!.]* 2>/dev/null; chown -R $(id -u):$(id -g) /mnt_cleanup || true"
     rm -rf "$SGLANG_DIR"
 fi
 

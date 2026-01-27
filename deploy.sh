@@ -6,7 +6,13 @@ echo "========== 1. 环境准备 =========="
 SGLANG_DIR="/home/amd/heyi/dcc/git_test/sglang"
 GITHUB_REPO="https://github.com/eliotwang/sglang_diffusion.git"
 echo "正在清理并创建工作目录: $SGLANG_DIR"
-rm -rf "$SGLANG_DIR" && mkdir -p "$SGLANG_DIR"
+if [ -d "$SGLANG_DIR" ]; then
+    echo "检测到残留文件，正在通过 Docker 权限强制清理..."
+    docker run --rm -v "$SGLANG_DIR:/mnt_cleanup" busybox sh -c "rm -rf /mnt_cleanup/* /mnt_cleanup/.[!.]*"
+    rm -rf "$SGLANG_DIR"
+fi
+
+mkdir -p "$SGLANG_DIR"
 
 git clone "$GITHUB_REPO" "$SGLANG_DIR"
 
